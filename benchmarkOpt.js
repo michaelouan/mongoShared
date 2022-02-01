@@ -12,7 +12,7 @@ const insertOneManyTime = async (collection) => {
     }
 }
 
-const InsertMany = async (collection) => {
+const insertMany = async (collection) => {
     let arr = []
     for (let index = 0; index < 1000; index++) {
         var dc = "";
@@ -60,7 +60,7 @@ const makeTest = async (fn,collection,test) => {
 const runTestOnCollection = async  (collection) => {
     await Promise.all([makeTest(insertOne,collection,"insert One"),
                         makeTest(insertOneManyTime,collection,"insertOneManyTime loop 10000 doc"),
-                        makeTest(InsertMany,collection,"insert Many arr 10000 doc"),
+                        makeTest(insertMany,collection,"insert Many arr 10000 doc"),
                         makeTest(updateOne,collection,"update One"),
                         makeTest(findWithSardKey,collection,"find with shardKey"),
                         makeTest(findAll,collection,"find All"),
