@@ -1,0 +1,125 @@
+#! /bin/bash
+
+sharedServersA=(MONGODATA-01 MONGODATA-02 MONGODATA-03)
+sharedServersB=(MONGODATA-04 MONGODATA-05 MONGODATA-06)
+configServer=(MONGOCONFIG-01 MONGOCONFIG-02 MONGOCONFIG-03)
+routerServer=(MONGOROUTING-01)
+appName=$1
+
+configServerCreate() {
+    for index in ${!configServer[@]};do
+        ssh-keyscan ${configServer[$index]} > ~/.ssh/known_hosts
+        ssh root@${configServer[$index]} << REMOTE_COMMAND
+        apt-get update
+        yes y | apt-get install docker.io
+        mkdir /data/db
+        docker run -d -p 27017:27017 --network host --name configsvr-db-$appName -v /data/db:/data/db mongo:5.0 \
+        mongod --configsvr --replSet rs_config_$appName --bind_ip_all --port 27017 --logpath /var/log/mongodb/mongod.log
+        sleep 15
+        docker ps
+REMOTE_COMMAND
+    done;
+}
+
+initConfigReplicaSet() {
+    ssh-keyscan ${configServer[0]} > ~/.ssh/known_hosts
+    ssh root@${configServer[0]} << REMOTE_COMMAND
+    echo '${configServer[0]}'
+    docker exec configsvr-db-$appName mongo --eval 'rs.initiate({
+        _id : "rs_config_$appName",
+        configsvr : true,
+        members: [
+            {_id : 0 , host : "${configServer[0]}:27017"},
+            {_id : 1 , host : "${configServer[1]}:27017"},
+            {_id : 2 , host : "${configServer[2]}:27017"}
+        ]
+    })'
+REMOTE_COMMAND
+}
+
+sharedServersCreate(){
+    echo 'create shard number'
+    rsName=rs_data0$1_$appName
+    shift
+    hosts=("$@")
+    for index in ${!hosts[@]};do
+        ssh-keyscan ${hosts[$index]} > ~/.ssh/known_hosts
+        echo $rsName
+        ssh root@${hosts[$index]} << REMOTE_COMMAND
+        apt-get update
+        yes y | apt-get install docker.io
+        mkdir /data/db
+        docker run -d -p 27017:27017 --network host --name mongoShared -v /data/db:/data/db mongo:5.0 \
+        mongod --shardsvr --replSet $rsName --dbpath /data/db --bind_ip_all --port 27017 --logpath /var/log/mongodb/mongod.log
+        sleep 10
+        docker ps
+REMOTE_COMMAND
+    done;
+}
+
+
+initializeReplicaSetData() {
+    rsName=rs_data0$1_$appName
+    shift
+    hosts=("$@")
+    ssh-keyscan ${hosts[0]} > ~/.ssh/known_hosts
+    ssh root@${hosts[0]} << REMOTE_COMMAND
+    docker exec mongoShared mongo --eval 'rs.initiate({
+            _id : "$rsName",
+            members: [
+               { _id: 0, host: "${hosts[0]}:27017"},
+               { _id: 1, host: "${hosts[1]}:27017"},
+               { _id: 2, host: "${hosts[2]}:27017"},
+            ]
+    })'
+REMOTE_COMMAND
+}
+
+
+createRouteServer() {
+    apt-get update
+    yes y | apt-get install docker.io
+    containerName=router-db-$appName
+    ssh-keyscan $routerServer > ~/.ssh/known_hosts
+    ssh root@$routerServer << REMOTE_COMMAND
+    apt-get update
+    yes y | apt-get install docker.io 
+    docker run -d -p 27017:27017 --network host --name $containerName mongo:5.0 \
+    mongos --port 27017 --configdb rs_config_$appName/${configServer[0]}:27017,${configServer[1]}:27017,${configServer[2]}:27017 --bind_ip_all 
+REMOTE_COMMAND
+}
+
+addSharedToCluster() {
+    rsName=rs_data0$1_$appName
+    shift
+    rsServers=("$@")
+    ssh-keyscan $routerServer > ~/.ssh/known_hosts
+    echo $rsName/${rsServers[0]}:27017
+    ssh root@$routerServer <<cmd
+    docker exec router-db-$appName mongo --eval 'sh.addShard("$rsName/${rsServers[0]}:27017,${rsServers[1]}:27017,${rsServers[2]}:27017")'
+cmd
+}
+
+main() {
+    echo "========================   create config server    ========================"
+    configServerCreate
+    echo "========================   init config replica set     ========================"
+    initConfigReplicaSet
+    echo "========================     create first replicaset shard     ========================"
+    sharedServersCreate 1 ${sharedServersA[@]} 
+    echo "========================     create second replicaset shard    ========================"
+    sharedServersCreate 2 ${sharedServersB[@]} 
+    echo "========================     init first replicaSet shard        ========================"
+    initializeReplicaSetData 1 ${sharedServersA[@]}
+    echo "========================     init second replicaSet shard      ========================"
+    initializeReplicaSetData 2 ${sharedServersB[@]} 
+    echo "========================     create routing mongos server      ========================"
+    createRouteServer
+    echo "========================       add first shard to cluster      ========================"
+    addSharedToCluster 1 ${sharedServersA[@]} 
+    echo "========================       add second shard to cluster          ========================"
+    addSharedToCluster 2 ${sharedServersB[@]} 
+}
+ 
+main
+
