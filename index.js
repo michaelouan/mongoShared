@@ -5,7 +5,10 @@ import { runTestOnCollection , maxOneInsertPerSecond} from './benchmarkOpt.js'
 const testWithThread = async () => {
     let data = {dc : "pkz" , date : new Date() , evenef : "dghdbf" , number : 12}
     const saveWorker = new Worker('./workerThread.js')
-    saveWorker.postMessage({data : data})  
+    saveWorker.postMessage({data : new Date()}) 
+    saveWorker.on("message" , msg => {
+        console.log(msg)
+    }) 
 }
 
 const main = async () => {
@@ -21,20 +24,19 @@ const main = async () => {
     console.log(`make tests on nonSharedCollection`)
     await runTestOnCollection(nonSharedCollection)
 
-    console.log("max insert per second on shared collection")
-    await maxOneInsertPerSecond(sharedCollection).then((value) =>{
-        console.log(value)
-    })    
+    // console.log("max insert per second on shared collection")
+    // await maxOneInsertPerSecond(sharedCollection).then((value) =>{
+    //     console.log(value)
+    // })    
 
-    console.log("max insert per second on nonSharedCollection")
-    await maxOneInsertPerSecond(nonSharedCollection).then((value) =>{
-        console.log(value)
-    })
+    // console.log("max insert per second on nonSharedCollection")
+    // await maxOneInsertPerSecond(nonSharedCollection).then((value) =>{
+    //     console.log(value)
+    // })
 
     console.log("run all test on thread")
     testWithThread()
-
-    //testWithThread()
+    testWithThread()
 }
 
 main()
