@@ -71,8 +71,10 @@ const runTestOnCollection = async  (collection) => {
     await makeTest(findWithSardKey,collection,"find with shardKey").then((value) => console.log(value))
     return Promise.all([makeTest(insertOne,collection,"insert One"),
                         makeTest(insertOneManyTime,collection,"insertOneManyTime loop 10000 doc"),
+
                         makeTest(insertManyOneArray,collection,"insert Many arr 10000 doc"),
                         //makeTest(updateOne,collection,"update One"),
+
                         makeTest(findWithSardKey,collection,"find with shardKey"),
                         makeTest(findAll,collection,"find All"),
                         makeTest(find,collection,"find")]).then((values)=>{
@@ -80,4 +82,6 @@ const runTestOnCollection = async  (collection) => {
                                 })
 }
 
+
 export { runTestOnCollection }
+
